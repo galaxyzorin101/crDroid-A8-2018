@@ -7,10 +7,16 @@ jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo apt-get clean
+      - name: Maximize Build Disk Space
+        uses: easimon/maximize-build-space@v10
+        with:
+          root-reserve-mb: 2048
+          swap-size-mb: 1024
+          remove-dotnet: 'true'
+          remove-android: 'true'
+          remove-haskell: 'true'
+          remove-codeql: 'true'
+          remove-docker-images: 'true'
 
       - name: Install Build Dependencies & Setup Git
         run: |
@@ -27,7 +33,7 @@ jobs:
         run: |
           export PATH=~/bin:$PATH
           mkdir -p ~/crdroid && cd ~/crdroid
-          repo init -u https://github.com/crdroidandroid/android.git -b 13.0 --git-lfs
+          repo init -u https://github.com/crdroidandroid/android.git -b 13.0 --git-lfs --depth=1
           repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
 
       - name: Clone LineageOS 20 (Android 13) Trees & GApps
@@ -81,4 +87,4 @@ jobs:
           gh release create v13.0-jackpotlte-unofficial "$ZIP_FILE" "$SRC_ZIP" \
             --repo ${{ github.repository }} \
             --title "Unofficial crDroid 9.x (Android 13) for Galaxy A8 2018 by GalaxyZorin101" \
-            --notes "Unofficial crDroid 9.x (Android 13) build for Samsung Galaxy A8 2018 (jackpotlte) maintained by GalaxyZorin101. Features Exynos 7885 2.288GHz @ 1.15V OC, integrated GApps, Magisk, and IMS VoLTE patches. Source tree archive attached for GPL v2 compliance."
+            --notes "Unofficial crDroid 9.x (Android 13) build for Samsung Galaxy A8 2018 (jackpotlte) maintained by GalaxyZorin101 under GPL v3. Features Exynos 7885 2.288GHz @ 1.15V OC, integrated GApps, Magisk, and IMS VoLTE patches."
