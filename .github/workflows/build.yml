@@ -1,0 +1,84 @@
+name: Build Unofficial crDroid 9.x (Android 13) for Galaxy A8 2018
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+
+      - name: Install Build Dependencies & Setup Git
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf lib32ncurses5-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python3 python-is-python3 gh
+          git config --global user.name "GalaxyZorin101"
+          git config --global user.email "samsoongnite@gmail.com"
+          git config --global safe.directory '*'
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+
+      - name: Sync crDroid Android 13 Source
+        run: |
+          export PATH=~/bin:$PATH
+          mkdir -p ~/crdroid && cd ~/crdroid
+          repo init -u https://github.com/crdroidandroid/android.git -b 13.0 --git-lfs
+          repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
+
+      - name: Clone LineageOS 20 (Android 13) Trees & GApps
+        run: |
+          cd ~/crdroid
+          git clone https://github.com/LineageOS/android_device_samsung_jackpotlte -b lineage-20.0 device/samsung/jackpotlte --depth=1
+          git clone https://github.com/LineageOS/android_device_samsung_exynos7885-common -b lineage-20.0 device/samsung/exynos7885-common --depth=1
+          git clone https://github.com/LineageOS/android_kernel_samsung_exynos7885 -b lineage-20.0 kernel/samsung/exynos7885 --depth=1
+          git clone https://github.com/The-Muppet/proprietary_vendor_samsung -b lineage-20.0 vendor/samsung --depth=1
+          git clone https://gitlab.com/NikGApps/vendor_nikgapps.git -b thirten vendor/nikgapps --depth=1
+
+      - name: Inject Overclock, GApps, Magisk & Branding
+        run: |
+          # 1. Overclock Kernel to 2.288GHz @ 1.15V
+          DTS_FILE="$HOME/crdroid/kernel/samsung/exynos7885/arch/arm64/boot/dts/exynos/exynos7885-cpu.dtsi"
+          if [ -f "$DTS_FILE" ]; then
+            sed -i '/operating-points-v2/a \        opp-2288000 {\n            opp-hz = /bits/ 64 <2288000000>;\n            opp-microvolt = <1150000>;\n        };' $DTS_FILE
+          fi
+
+          # 2. Add GApps, Magisk & IMS/VoLTE flags
+          DEVICE_MK="$HOME/crdroid/device/samsung/jackpotlte/device.mk"
+          echo "PRODUCT_PACKAGES += Magisk" >> $DEVICE_MK
+          echo '$(call inherit-product, vendor/nikgapps/nikgapps.mk)' >> $DEVICE_MK
+          echo "PERSIST_ENABLE_VOLTE=true" >> $DEVICE_MK
+          echo "PRODUCT_PROPERTY_OVERRIDES += persist.vendor.ims.volte_enable=1" >> $DEVICE_MK
+
+          # 3. Apply Unofficial crDroid & GalaxyZorin101 Branding
+          echo "PRODUCT_BUILD_PROP_OVERRIDES += BUILD_DISPLAY_ID=\"crDroidAndroid-13.0-Unofficial-jackpotlte-GalaxyZorin101\"" >> $DEVICE_MK
+
+      - name: Compile ROM
+        run: |
+          export PATH=~/bin:$PATH
+          cd ~/crdroid
+          source build/envsetup.sh
+          lunch crdroid_jackpotlte-userdebug
+          mka bacon -j$(nproc --all)
+
+      - name: Create Source Trees Archive
+        run: |
+          cd ~/crdroid
+          zip -r9 jackpotlte-sources-and-trees.zip device/samsung/ kernel/samsung/ exynos7885-cpu.dtsi .repo/manifests/
+
+      - name: Create GitHub Release with ROM ZIP, Source Archive & Disclosures
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd ~/crdroid/out/target/product/jackpotlte/
+          ZIP_FILE=$(ls crDroidAndroid-13.0-*.zip | head -n 1)
+          SRC_ZIP=~/crdroid/jackpotlte-sources-and-trees.zip
+
+          gh release create v13.0-jackpotlte-unofficial "$ZIP_FILE" "$SRC_ZIP" \
+            --repo ${{ github.repository }} \
+            --title "Unofficial crDroid 9.x (Android 13) for Galaxy A8 2018 by GalaxyZorin101" \
+            --notes "Unofficial crDroid 9.x (Android 13) build for Samsung Galaxy A8 2018 (jackpotlte) maintained by GalaxyZorin101. Features Exynos 7885 2.288GHz @ 1.15V OC, integrated GApps, Magisk, and IMS VoLTE patches. Source tree archive attached for GPL v2 compliance."
